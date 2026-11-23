@@ -141,11 +141,10 @@ def national_type(row):
 
 
 def collect_source(source, stop, pages=3, html_fetch=fetch_page, json_fetch=public_json):
-    from ..storage.taxonomy import is_result_notice
     result = _collect_source(source, stop, pages, html_fetch, json_fetch)
     original = result['rows']
     result['rows'] = [{k: row[k] for k in ('title', 'url', 'published_at', 'source', 'region', 'notice_type') if k in row}
-                      for row in original if not is_result_notice(row.get('title', ''), row.get('notice_type', ''))]
+                      for row in original]
     # A source's future bid/opening date is not a verified publication date.
     today = datetime.now(CHINA_TIME).date().isoformat()
     uncertain = 0
@@ -158,12 +157,9 @@ def collect_source(source, stop, pages=3, html_fetch=fetch_page, json_fetch=publ
         if not result.get('warnings'):
             result['retryable'] = False
         result.setdefault('warnings', []).append(f'{uncertain} 条公告的发布日期晚于当前日期，已标为待核实')
-    excluded = len(original) - len(result['rows'])
     if original and not result['rows']:
         result['empty_ok'] = True
     result['blocked'] = result.get('blocked', False) or any(re.search(r'HTTP (?:401|403|429)|安全验证|验证码|限制访问|限流提示页|访问受限', warning) for warning in result.get('warnings', []))
-    if excluded:
-        result['message'] += f'；已排除 {excluded} 条结果类公告'
     return result
 
 

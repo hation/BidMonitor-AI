@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 
 from .detail import normalized_date
 from ..storage.availability import CHINA_TIME
-from ..storage.taxonomy import classify_notice, is_result_notice
+from ..storage.taxonomy import classify_notice
 
 
 NOISE = re.compile(r'操作指南|用户手册|平台维护|系统升级|政策解读|管理办法|工作动态|新闻|培训通知|招聘|采购法规|专家征集|工作组|采购规则|采购制度|采购指南|招标培训|采购培训|系统演示|系统测试|测试项目|国泰测试|测试公告|全国统一大市场|招标投标领域|实施意见')
@@ -101,7 +101,7 @@ def parse_listing(html, url, source):
         kind = etrading_kind(link)
         if link in seen or not 8 <= len(title) <= 500 or (not NOTICE.search(title) and not kind):
             continue
-        if NOISE.search(title) or is_result_notice(title, kind) or anchor.find_parent(['nav', 'header', 'footer']):
+        if NOISE.search(title) or anchor.find_parent(['nav', 'header', 'footer']):
             continue
         if re.search(r'\.(xlsx?|zip|rar|exe|jpg|png)$|/(login|register|help)(/|$)', parsed.path, re.I):
             continue

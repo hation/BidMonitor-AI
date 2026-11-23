@@ -174,7 +174,7 @@ class WorkbenchStore:
         if availability not in ("active", "open", "unknown", "closed", "all"):
             raise ValueError("未知截止状态筛选")
         checked_at = datetime.now(timezone.utc)
-        clauses, args = ["is_result_notice(p.title,p.notice_type)=0"], []
+        clauses, args = [], []
         # Each keyword adds an AND clause before counting and pagination.
         for term in [*q.strip().split()[:12], *refine.strip().split()]:
             escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
