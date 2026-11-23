@@ -190,6 +190,24 @@ def extract_fields(content):
     amount = re.search(r'(?:预算金额|采购预算控制额度|采购预算|项目预算)\s*(?:[（(](亿元|万元|元)[）)])?\s*[:：]?\s*([\d,]+(?:\.\d+)?)\s*(亿元|万元|元)?', content)
     if amount and (amount[1] or amount[3]):
         result['budget'] = amount[2]+' '+(amount[1] or amount[3])
+    win_labels = r'中标供应商|中标单位|成交供应商|成交单位|中标人|成交人'
+    company = None
+    patterns = [
+        r'(?m)^\s*(?:[一二三四五六七八九十\d]+[、.．]\s*)?(?:' + win_labels + r')\s*[:：]\s*([^\n]{2,120})',
+        r'(?m)^\s*(?:' + win_labels + r')名称\s*[:：]?\s*\n\s*([^\n]{2,120})',
+        r'(?:' + win_labels + r')\s*[:：]\s*([^\n]{2,120})',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, content)
+        if match:
+            company = re.split(r'\s*(?:地址|联系方式|联系人|中标金额|项目联系人)\s*[:：]', match[1].strip())[0]
+            company = re.sub(r'[）)]\s*(?:中标|成交|合同).*$', '', company).strip()
+            if re.search(r'(?:公司|集团|研究院|研究所|事务所|中心|局|学校|医院|厂|社|大学|学院)$', company):
+                result['win_company'] = company
+                break
+    win_amount = re.search(r'(?:中标金额|成交金额)\s*(?:[（(](亿元|万元|元)[）)])?\s*[:：]?\s*([\d,]+(?:\.\d+)?)\s*(亿元|万元|元)?', content)
+    if win_amount and (win_amount[1] or win_amount[3]):
+        result['win_amount'] = win_amount[2].replace(',', '') + ' ' + (win_amount[1] or win_amount[3])
     return result
 
 

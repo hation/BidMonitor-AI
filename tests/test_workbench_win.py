@@ -54,3 +54,33 @@ def test_search_default_includes_results():
     filtered = store.search(notice_type='中标结果')
     assert filtered['total'] == 1
     assert filtered['items'][0]['title'].startswith('某设备采购项目中标结果')
+
+
+from apps.workbench.bidmonitor_workbench.collectors.detail import extract_fields
+
+
+def test_extract_fields_win_company_field_line():
+    content = ('采购项目编号：A2026-001\n'
+               '中标供应商：北京某某科技有限公司\n'
+               '中标金额：286 万元\n')
+    result = extract_fields(content)
+    assert result['win_company'] == '北京某某科技有限公司'
+    assert result['win_amount'] == '286 万元'
+
+
+def test_extract_fields_win_company_table():
+    content = ('项目名称：XX系统采购\n'
+               '中标供应商名称：\n'
+               '上海某某信息技术有限公司\n'
+               '中标金额：\n'
+               '1,200,000 元\n')
+    result = extract_fields(content)
+    assert '上海某某信息技术有限公司' in result['win_company']
+    assert result['win_amount'] == '1200000 元'
+
+
+def test_extract_fields_no_win_when_absent():
+    content = '某项目招标公告，预算金额：50 万元。'
+    result = extract_fields(content)
+    assert not result.get('win_company')
+    assert not result.get('win_amount')
