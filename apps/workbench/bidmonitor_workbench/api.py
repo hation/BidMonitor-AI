@@ -187,6 +187,7 @@ def create_app(db_path=None):
     def meta():
         return store.meta() | {"collection": collector.snapshot(), "schedule": collector.schedule_snapshot(), "source_config": SOURCE,
                                "source_configs": collector.sources(), "source_sectors": SECTORS, "source_industry_sectors": INDUSTRY_SOURCE_SECTORS, "scope": "all_industries",
+                               "opportunity_keywords": store.setting('opportunity_keywords') or {},
                                "timezone": str(datetime.now().astimezone().tzinfo)}
 
     def get_project(key):
@@ -206,14 +207,16 @@ def create_app(db_path=None):
                scope: Literal["all", "title"] = "all", limit: int = Query(20, ge=1, le=100),
                offset: int = Query(0, ge=0), tracked: bool = False, industry: str = "", category: str = "",
                availability: Literal["active", "open", "unknown", "closed", "all"] = "all",
-               refine: str = Query("", max_length=300), source_sector: str = ""):
+               refine: str = Query("", max_length=300), source_sector: str = "",
+               relevance: Literal["", "direct", "related", "leads"] = ""):
         if date_from and date_to and date_from > date_to:
             raise ValueError("开始日期不能晚于结束日期")
         sources = query_source_scope(industry, source_sector)
         return store.search(q, region, notice_type, source, str(date_from or ""), str(date_to or ""),
                             scope, limit, offset, tracked, industry, category, availability, refine,
                             source_ids=sources['ids'] if sources is not None else None,
-                            source_names=sources['names'] if sources is not None else ())
+                            source_names=sources['names'] if sources is not None else (),
+                            relevance=relevance)
 
     @app.get("/api/export")
     def export(q: str = "", region: str = "", notice_type: list[str] | None = Query(None, max_length=100), source: str = "",

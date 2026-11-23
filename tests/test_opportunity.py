@@ -115,3 +115,24 @@ def test_search_filters_by_relevance():
     assert store.search(relevance='related')['total'] == 1
     assert store.search(relevance='leads')['total'] == 0
     assert store.search()['total'] == 3
+
+
+from fastapi.testclient import TestClient
+from apps.workbench.bidmonitor_workbench.api import create_app
+
+
+def test_api_meta_returns_keywords():
+    with tempfile.TemporaryDirectory() as folder:
+        with TestClient(create_app(Path(folder) / 'test.db')) as client:
+            meta = client.get('/api/meta').json()
+            assert meta['opportunity_keywords']['core']
+
+
+def test_api_search_filters_by_relevance():
+    with tempfile.TemporaryDirectory() as folder:
+        with TestClient(create_app(Path(folder) / 'test.db')) as client:
+            client.post('/api/projects', json=dict(title='政务云服务器采购项目', url='https://e.com/1',
+                                                   source='测试', published_at='2026-11-20'))
+            client.post('/api/projects', json=dict(title='市政道路改造工程', url='https://e.com/2',
+                                                   source='测试', published_at='2026-11-20'))
+            assert client.get('/api/projects?relevance=direct').json()['total'] == 1
