@@ -76,6 +76,23 @@ function collectionParams(settings = false) {
 
 function tag(value, extra = '') { return `<span class="tag ${extra}">${esc(value)}</span>`; }
 function typeTag(value) { return tag(value, value === '中标结果' ? 'green' : value === '变更公告' ? 'orange' : value === '采购意向' ? 'purple' : ''); }
+function relevanceTag(p) {
+  if (p.relevance === 'direct') return tag('直接相关','green');
+  if (p.relevance === 'related') return tag('相关');
+  if (p.relevance === 'leads') return tag('意向线索','orange');
+  return '';
+}
+function urgencyBadge(p) {
+  if (!p.urgency_level) return '';
+  const map = {
+    urgent: `🔴 距截止${p.days_left}天`,
+    prep: `🟡 距截止${p.days_left}天`,
+    relaxed: `🟢 距截止${p.days_left}天`,
+    expired: '⛔ 已过期',
+    unknown: '未提取截止',
+  };
+  return `<span class="muted">${map[p.urgency_level]}</span>`;
+}
 function empty(title, description, button = '') { return `<div class="empty"><h3>${esc(title)}</h3><p>${esc(description)}</p>${button}</div>`; }
 
 function updateNoticeTypeSummary() {
@@ -145,7 +162,7 @@ async function refreshMeta() {
 }
 function searchParams(paging = true) {
   const params = new URLSearchParams();
-  for (const [key,id] of Object.entries({q:'query',scope:'scope',industry:'industry',category:'category',region:'region',source:'source',date_from:'dateFrom',date_to:'dateTo',availability:'availability',refine:'refineQuery'})) if ($('#'+id).value) params.set(key, $('#'+id).value.trim());
+  for (const [key,id] of Object.entries({q:'query',scope:'scope',industry:'industry',category:'category',region:'region',source:'source',date_from:'dateFrom',date_to:'dateTo',availability:'availability',refine:'refineQuery',relevance:'relevance'})) if ($('#'+id).value) params.set(key, $('#'+id).value.trim());
   if ($('#sourceSector').value) params.set('source_sector', $('#sourceSector').value);
   for (const type of selectedNoticeTypes) params.append('notice_type', type);
   if ($('#tracked').checked) params.set('tracked','true');
@@ -161,7 +178,7 @@ async function search() {
     state.total = data.total;
     $('#resultHint').textContent = ($('#industry').value ? `当前仅搜索${$('#industry').value}相关来源 · ` : '') + '已自动提取公告详情；中标/废标公告默认可见';
     $('#resultCount').textContent = `${data.total.toLocaleString()} 条`;
-    $('#projectResults').innerHTML = data.items.length ? data.items.map(p => `<article class="project-card"><div class="project-main"><div class="card-top">${typeTag(p.notice_type)}${p.industry && p.industry !== '待分类' ? tag('项目方向 · '+p.industry) : ''}${p.category && p.category !== '待分类' ? tag(p.category,'purple') : ''}${p.region ? tag(p.region) : ''}${p.lead_id ? tag('已跟进 · '+p.stage,'green') : ''}</div><button class="project-title" data-open="${esc(p.id)}">${esc(p.title)}</button><div class="project-meta"><span>发布 <b>${esc(p.published_at || '日期待补全')}</b></span><span>原始链接 <a href="${esc(safeURL(p.url))}" target="_blank" rel="noopener noreferrer">${esc(p.url)}</a></span>${p.win_company ? `<span>中标 <b>${esc(p.win_company)}</b>${p.win_amount ? ' · '+esc(p.win_amount) : ''}</span>` : ''}</div></div><div class="card-actions"><span class="muted">${esc(p.source || '来源待补全')}</span><button class="button ${p.lead_id ? '' : 'primary'}" ${p.lead_id ? 'data-follow' : 'data-convert'}="${esc(p.id)}">${p.lead_id ? '查看跟进 →' : '＋ 加入线索'}</button></div></article>`).join('') : empty('暂无符合条件的公告', state.meta?.projects ? '试试减少筛选条件，或使用更简短的关键词。' : '点击“采集最新公告”获取真实公告，也可以录入已有项目。');
+    $('#projectResults').innerHTML = data.items.length ? data.items.map(p => `<article class="project-card"><div class="project-main"><div class="card-top">${typeTag(p.notice_type)}${relevanceTag(p)}${p.industry && p.industry !== '待分类' ? tag('项目方向 · '+p.industry) : ''}${p.category && p.category !== '待分类' ? tag(p.category,'purple') : ''}${p.region ? tag(p.region) : ''}${p.lead_id ? tag('已跟进 · '+p.stage,'green') : ''}</div><button class="project-title" data-open="${esc(p.id)}">${esc(p.title)}</button><div class="project-meta"><span>发布 <b>${esc(p.published_at || '日期待补全')}</b></span><span>原始链接 <a href="${esc(safeURL(p.url))}" target="_blank" rel="noopener noreferrer">${esc(p.url)}</a></span>${urgencyBadge(p)}${p.win_company ? `<span>中标 <b>${esc(p.win_company)}</b>${p.win_amount ? ' · '+esc(p.win_amount) : ''}</span>` : ''}</div></div><div class="card-actions"><span class="muted">${esc(p.source || '来源待补全')}</span><button class="button ${p.lead_id ? '' : 'primary'}" ${p.lead_id ? 'data-follow' : 'data-convert'}="${esc(p.id)}">${p.lead_id ? '查看跟进 →' : '＋ 加入线索'}</button></div></article>`).join('') : empty('暂无符合条件的公告', state.meta?.projects ? '试试减少筛选条件，或使用更简短的关键词。' : '点击“采集最新公告”获取真实公告，也可以录入已有项目。');
     $('#pageInfo').textContent = data.total ? `第 ${Math.floor(state.offset / 20) + 1} / ${Math.ceil(data.total / 20)} 页，共 ${data.total} 条` : '暂无结果';
     $('#prevPage').disabled = state.offset === 0; $('#nextPage').disabled = state.offset + 20 >= data.total;
   } catch (error) { if (sequence === state.searchSeq) { $('#projectResults').innerHTML = `<div class="error-box">${esc(error.message)}。可再次点击搜索重试。</div>`; $('#prevPage').disabled = true; $('#nextPage').disabled = true; } }
