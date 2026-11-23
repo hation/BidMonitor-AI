@@ -298,7 +298,8 @@ class WorkbenchStore:
 
     def edit_project(self, key, data):
         allowed = {"title", "source", "region", "notice_type", "published_at", "deadline", "budget",
-                   "purchaser", "agency", "project_no", "content", "industry", "category"}
+                   "purchaser", "agency", "project_no", "content", "industry", "category",
+                   "win_company", "win_amount"}
         updates = {k: v for k, v in data.items() if k in allowed}
         updates.update(detail_status="ready" if data.get("content") else "pending", updated_at=now())
         with self.connection() as db:

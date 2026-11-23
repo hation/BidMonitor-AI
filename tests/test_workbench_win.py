@@ -147,3 +147,13 @@ def test_search_returns_win_fields():
     result = store.search()
     assert result['items'][0]['win_company'] == '北京某某科技有限公司'
     assert result['items'][0]['win_amount'] == '286 万元'
+
+
+def test_edit_project_accepts_win_fields():
+    store = make_store()
+    key, _ = store.upsert_project(dict(title='某设备采购项目中标结果公告', url='https://example.com/a',
+                                       source='测试', published_at='2026-11-20'))
+    store.edit_project(key, dict(win_company='上海某某信息技术有限公司', win_amount='300 万元'))
+    item = store.project(key)
+    assert item['win_company'] == '上海某某信息技术有限公司'
+    assert item['win_amount'] == '300 万元'

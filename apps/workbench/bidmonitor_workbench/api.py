@@ -47,6 +47,8 @@ class ProjectInput(Input):
     agency: str = Field(default="", max_length=200)
     project_no: str = Field(default="", max_length=150)
     content: str = Field(default="", max_length=200000)
+    win_company: str = Field(default="", max_length=200)
+    win_amount: str = Field(default="", max_length=100)
 
     @field_validator("url")
     @classmethod
