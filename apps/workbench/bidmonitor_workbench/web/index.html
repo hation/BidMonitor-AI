@@ -59,6 +59,20 @@
           </div>
           <label>排除词（每行一个）<textarea id="kwExclude" rows="4" placeholder="复印纸&#10;物业&#10;食堂"></textarea></label>
           <div class="form-footer"><span class="muted" id="kwStatus"></span><button class="button primary" id="saveKeywords">保存关键词</button></div></article>
+        <article class="panel"><div class="panel-title"><h2>AI 精读</h2><span class="tag" id="aiReadTag">未启用</span></div>
+          <p>通过本机 deerflow CLI 精读公告/标书，输出结构化研判（采购单位/预算/截止/技术要点/业务关联度/跟进建议/风险提示）。可在公告详情页手动精读，或采集后自动精读直接相关公告。</p>
+          <form id="aiReadForm">
+            <label class="check"><input id="aiEnabled" type="checkbox"> 启用 AI 精读</label>
+            <label class="check"><input id="aiAutoEnabled" type="checkbox"> 采集后自动精读直接相关公告</label>
+            <div class="form-grid">
+              <label>deerflow CLI 路径（留空自动探测）<input id="aiCli" maxlength="500" placeholder="/Users/…/deerflowcli"></label>
+              <label>Gateway 地址<input id="aiGateway" maxlength="300" value="http://127.0.0.1:8001"></label>
+              <label>超时（秒）<input id="aiTimeout" type="number" min="60" max="7200" value="600"></label>
+              <label>每日自动精读上限<input id="aiAutoLimit" type="number" min="1" max="100" value="10"></label>
+            </div>
+            <div class="form-footer"><span class="muted" id="aiReadStatus"></span><button class="button primary" type="submit">保存 AI 配置</button></div>
+          </form>
+        </article>
         <article class="panel"><h2>团队成员</h2><p>成员用于分配线索负责人。本机版暂不提供独立账号和访问权限；服务仅监听本机地址。</p><form id="memberForm" class="inline-form"><input name="name" placeholder="输入成员姓名" required maxlength="50" aria-label="新成员姓名"><button class="button primary">添加</button></form><div class="member-list" id="memberList"></div><div class="notice" id="timezoneInfo"></div></article></div>
         <article class="panel"><h2>扩充来源库</h2><p>可批量导入地市县交易平台、行业企业、招标代理、高校和医院等网站。每次最多 10000 条，重复列表地址自动跳过，保存后持续参与采集。仅导入目录不代表采集成功。</p>
           <form id="sourceImportForm"><label>来源 CSV 文件（UTF-8，可选）<input id="sourceImportFile" type="file" accept=".csv,text/csv"></label>

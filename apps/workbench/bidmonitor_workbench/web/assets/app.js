@@ -159,6 +159,7 @@ async function refreshMeta() {
   updateSourceOptions();
   renderStages();
   loadOpportunityKeywords();
+  loadAiReadSettings();
   return meta;
 }
 function loadOpportunityKeywords() {
@@ -166,6 +167,17 @@ function loadOpportunityKeywords() {
   $('#kwCore').value = (kw.core || []).join('\n');
   $('#kwSecondary').value = (kw.secondary || []).join('\n');
   $('#kwExclude').value = (kw.exclude || []).join('\n');
+}
+function loadAiReadSettings() {
+  const s = state.meta?.ai_read_settings || {};
+  $('#aiEnabled').checked = !!s.enabled;
+  $('#aiAutoEnabled').checked = !!s.auto_enabled;
+  $('#aiCli').value = s.deerflow_cli || '';
+  $('#aiGateway').value = s.gateway || 'http://127.0.0.1:8001';
+  $('#aiTimeout').value = s.timeout || 600;
+  $('#aiAutoLimit').value = s.auto_limit || 10;
+  $('#aiReadTag').textContent = s.enabled ? '已启用' : '未启用';
+  $('#aiReadTag').className = s.enabled ? 'tag green' : 'tag';
 }
 function searchParams(paging = true) {
   const params = new URLSearchParams();
@@ -233,9 +245,32 @@ async function openProject(key) {
 function renderDetail() {
   const p = state.project, lead = p.lead, url = safeURL(p.url);
   const ownerOptions = [''].concat(state.meta?.members || []).map(m => `<option value="${esc(m)}" ${lead?.owner === m ? 'selected' : ''}>${esc(m || '待分配')}</option>`).join('');
-  $('#detailBody').innerHTML = `<div class="detail-head"><div class="card-top">${typeTag(p.notice_type)}${lead ? tag(lead.stage,'green') : tag('尚未加入线索池')}</div><h2>${esc(p.title)}</h2><div class="project-meta"><span>来源 <b>${esc(p.source || '待补全')}</b></span><span>发布 <b>${esc(p.published_at || '日期待补全')}</b></span></div><div class="detail-actions">${url ? `<a class="button" href="${esc(url)}" target="_blank" rel="noopener noreferrer">查看原始公告 ↗</a>` : ''}${lead ? '<button class="button primary" data-tab="follow">进入线索跟进 →</button>' : `<button class="button primary" data-convert="${esc(p.id)}">＋ 加入线索池</button>`}</div></div><div class="detail-tabs"><button data-tab="article" class="${state.tab === 'article' ? 'active' : ''}">公告信息</button><button data-tab="follow" class="${state.tab === 'follow' ? 'active' : ''}">线索跟进${lead ? ' · '+p.notes.filter(n => n.kind === 'note').length : ''}</button></div><section id="detail-article" class="detail-section ${state.tab === 'article' ? 'active' : ''}"><div class="detail-note">已自动提取公告正文与关键信息（中标公告展示中标单位与金额）；可访问原始公告核对。</div>${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(p.url)}</a>` : '<p>未填写原始链接</p>'}<div class="info-grid" style="margin-top:18px">${p.purchaser ? `<div class="info-item"><small>采购人</small><span>${esc(p.purchaser)}</span></div>` : ''}${p.budget ? `<div class="info-item"><small>预算金额</small><span>${esc(p.budget)}</span></div>` : ''}${p.deadline ? `<div class="info-item"><small>投标截止</small><span>${esc(p.deadline)}</span></div>` : ''}${p.win_company ? `<div class="info-item"><small>中标单位</small><span>${esc(p.win_company)}</span></div>` : ''}${p.win_amount ? `<div class="info-item"><small>中标金额</small><span>${esc(p.win_amount)}</span></div>` : ''}</div></section><section id="detail-follow" class="detail-section ${state.tab === 'follow' ? 'active' : ''}">${lead ? `<form id="leadForm"><div class="form-grid"><label>负责人<select name="owner">${ownerOptions}</select></label><label>跟进阶段<select name="stage">${state.meta.stage_options.map(s => `<option ${s === lead.stage ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></label><label>优先级<select name="priority">${['普通','重要','紧急'].map(s => `<option ${s === lead.priority ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label>下次跟进（本机时间）<input name="next_followup" type="datetime-local" value="${esc(lead.next_followup)}"></label><label>业务联系人<input name="contact_name" maxlength="100" value="${esc(lead.contact_name)}" placeholder="例如：采购项目负责人"></label><label>联系方式<input name="contact_info" maxlength="300" value="${esc(lead.contact_info)}" placeholder="电话、邮箱或其他联系方式"></label></div><div class="form-footer"><span class="muted">负责人可在“数据与成员”中添加。</span><button type="submit" class="button primary">保存跟进信息</button></div></form><div class="notes"><h3>跟进记录</h3><form class="note-form" id="noteForm"><textarea name="body" required maxlength="10000" placeholder="记录沟通结果、客户需求，以及下一步计划…" aria-label="跟进记录内容"></textarea><button class="button" type="submit">＋ 添加记录</button></form><div class="timeline">${p.notes.map(n => `<div class="timeline-item ${n.kind === 'system' ? 'system' : ''}"><small>${esc(prettyTime(n.created_at))} · ${n.kind === 'system' ? '状态记录' : '沟通记录'}</small><p>${esc(n.body)}</p></div>`).join('')}</div></div>` : empty('将项目加入线索池，开始跟进', '分配负责人、安排下次跟进，并记录每次沟通。', `<button class="button primary" data-convert="${esc(p.id)}">＋ 加入线索池</button>`)}</section>`;
+  $('#detailBody').innerHTML = `<div class="detail-head"><div class="card-top">${typeTag(p.notice_type)}${lead ? tag(lead.stage,'green') : tag('尚未加入线索池')}</div><h2>${esc(p.title)}</h2><div class="project-meta"><span>来源 <b>${esc(p.source || '待补全')}</b></span><span>发布 <b>${esc(p.published_at || '日期待补全')}</b></span></div><div class="detail-actions">${url ? `<a class="button" href="${esc(url)}" target="_blank" rel="noopener noreferrer">查看原始公告 ↗</a>` : ''}${lead ? '<button class="button primary" data-tab="follow">进入线索跟进 →</button>' : `<button class="button primary" data-convert="${esc(p.id)}">＋ 加入线索池</button>`}</div></div><div class="detail-tabs"><button data-tab="article" class="${state.tab === 'article' ? 'active' : ''}">公告信息</button><button data-tab="follow" class="${state.tab === 'follow' ? 'active' : ''}">线索跟进${lead ? ' · '+p.notes.filter(n => n.kind === 'note').length : ''}</button></div><section id="detail-article" class="detail-section ${state.tab === 'article' ? 'active' : ''}"><div class="detail-note">已自动提取公告正文与关键信息（中标公告展示中标单位与金额）；可访问原始公告核对。</div>${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(p.url)}</a>` : '<p>未填写原始链接</p>'}<div class="info-grid" style="margin-top:18px">${p.purchaser ? `<div class="info-item"><small>采购人</small><span>${esc(p.purchaser)}</span></div>` : ''}${p.budget ? `<div class="info-item"><small>预算金额</small><span>${esc(p.budget)}</span></div>` : ''}${p.deadline ? `<div class="info-item"><small>投标截止</small><span>${esc(p.deadline)}</span></div>` : ''}${p.win_company ? `<div class="info-item"><small>中标单位</small><span>${esc(p.win_company)}</span></div>` : ''}${p.win_amount ? `<div class="info-item"><small>中标金额</small><span>${esc(p.win_amount)}</span></div>` : ''}</div><div style="margin-top:20px"><h3>AI 精读研判</h3><button class="button" id="aiReadButton" data-key="${esc(p.id)}">✨ AI 精读</button><div id="aiReadResult" class="ai-read-result"></div></div></section><section id="detail-follow" class="detail-section ${state.tab === 'follow' ? 'active' : ''}">${lead ? `<form id="leadForm"><div class="form-grid"><label>负责人<select name="owner">${ownerOptions}</select></label><label>跟进阶段<select name="stage">${state.meta.stage_options.map(s => `<option ${s === lead.stage ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></label><label>优先级<select name="priority">${['普通','重要','紧急'].map(s => `<option ${s === lead.priority ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label>下次跟进（本机时间）<input name="next_followup" type="datetime-local" value="${esc(lead.next_followup)}"></label><label>业务联系人<input name="contact_name" maxlength="100" value="${esc(lead.contact_name)}" placeholder="例如：采购项目负责人"></label><label>联系方式<input name="contact_info" maxlength="300" value="${esc(lead.contact_info)}" placeholder="电话、邮箱或其他联系方式"></label></div><div class="form-footer"><span class="muted">负责人可在“数据与成员”中添加。</span><button type="submit" class="button primary">保存跟进信息</button></div></form><div class="notes"><h3>跟进记录</h3><form class="note-form" id="noteForm"><textarea name="body" required maxlength="10000" placeholder="记录沟通结果、客户需求，以及下一步计划…" aria-label="跟进记录内容"></textarea><button class="button" type="submit">＋ 添加记录</button></form><div class="timeline">${p.notes.map(n => `<div class="timeline-item ${n.kind === 'system' ? 'system' : ''}"><small>${esc(prettyTime(n.created_at))} · ${n.kind === 'system' ? '状态记录' : '沟通记录'}</small><p>${esc(n.body)}</p></div>`).join('')}</div></div>` : empty('将项目加入线索池，开始跟进', '分配负责人、安排下次跟进，并记录每次沟通。', `<button class="button primary" data-convert="${esc(p.id)}">＋ 加入线索池</button>`)}</section>`;
+  renderAiRead(p);
   if (p.collected_sources?.length > 1) $('.detail-head').insertAdjacentHTML('beforeend', `<p class="muted">收录频道：${p.collected_sources.map(esc).join(' · ')}（相同原文已合并）</p>`);
   $('.detail-actions').insertAdjacentHTML('beforeend', '<button class="button" id="editProject">补充 / 编辑信息</button>');
+}
+function renderAiRead(p) {
+  const box = $('#aiReadResult'); if (!box) return;
+  const record = p.ai_read;
+  if (!record || record.status === 'pending' || record.status === 'running') {
+    box.innerHTML = '<div class="muted">精读中…（后台执行，可能需数分钟）</div>';
+    $('#aiReadButton').disabled = true;
+    if (p.id) setTimeout(() => pollAiRead(p.id), 8000);
+    return;
+  }
+  $('#aiReadButton').disabled = false;
+  if (record.status === 'error') { box.innerHTML = `<div class="error-box">${esc(record.error || '精读失败')}</div>`; return; }
+  const r = record.result || {};
+  const items = [['采购单位', r.采购单位], ['预算', r.预算], ['投标截止', r.投标截止], ['技术要点', r.技术要点], ['业务关联度', r.业务关联度]].filter(([,v]) => v);
+  box.innerHTML = items.map(([k,v]) => `<div class="info-item"><small>${k}</small><span>${esc(String(v))}</span></div>`).join('') +
+    (r.跟进建议 ? `<div class="info-item"><small>跟进建议</small><span>${esc(String(r.跟进建议))}</span></div>` : '') +
+    (r.风险提示 ? `<div class="info-item"><small>风险提示</small><span>${esc(String(r.风险提示))}</span></div>` : '') +
+    (r.建议文本 ? `<p class="muted" style="margin-top:12px">${esc(String(r.建议文本))}</p>` : '');
+}
+async function pollAiRead(key) {
+  try { const p = await api('/api/projects/'+encodeURIComponent(key)); if (state.project?.id === key) renderAiRead(p); }
+  catch (e) { /* 忽略轮询错误 */ }
 }
 function chooseTab(tab) { state.tab = tab; $$('.detail-tabs button').forEach(b => b.classList.toggle('active',b.dataset.tab === tab)); $$('.detail-section').forEach(s => s.classList.toggle('active',s.id === 'detail-'+tab)); }
 async function refreshLists() { await refreshMeta(); if (state.page === 'leads') await loadLeads(); else if (state.page === 'search') await search(); }
@@ -334,6 +369,34 @@ $('#saveKeywords').addEventListener('click', async function () {
     await refreshMeta();
     $('#kwStatus').textContent = '已保存，相关度计算即时生效';
     toast('关键词已保存');
+  });
+});
+document.addEventListener('click', e => {
+  const btn = e.target.closest('#aiReadButton');
+  if (!btn) return;
+  const key = btn.dataset.key;
+  const ai = state.meta?.ai_read_settings;
+  if (!ai || !ai.enabled) { toast('请先在设置页启用 AI 精读'); return; }
+  busy(btn, async () => {
+    await api('/api/projects/'+encodeURIComponent(key)+'/ai-read', 'POST');
+    toast('已加入 AI 精读队列');
+    renderAiRead(state.project);
+  });
+});
+$('#aiReadForm').addEventListener('submit', e => {
+  e.preventDefault();
+  busy($('button', e.currentTarget), async () => {
+    await api('/api/settings/ai-read', 'PATCH', {
+      enabled: $('#aiEnabled').checked,
+      deerflow_cli: $('#aiCli').value.trim(),
+      gateway: $('#aiGateway').value.trim(),
+      timeout: parseInt($('#aiTimeout').value, 10),
+      auto_enabled: $('#aiAutoEnabled').checked,
+      auto_limit: parseInt($('#aiAutoLimit').value, 10),
+    });
+    await refreshMeta();
+    $('#aiReadStatus').textContent = '已保存';
+    toast('AI 精读配置已保存');
   });
 });
 $('#addProjectButton').addEventListener('click', () => { const form = $('#projectForm'); form.reset(); delete form.dataset.editing; form.elements.url.disabled = false; $('.dialog-heading h2').textContent = '录入项目'; $('#projectDialog').showModal(); });
