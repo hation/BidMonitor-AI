@@ -293,6 +293,7 @@ class WorkbenchStore:
             result["related"] = [dict(r) for r in db.execute(
                 "SELECT id,title,notice_type,published_at FROM projects WHERE project_no=? AND id<>? "
                 "ORDER BY published_at DESC LIMIT 20", (row["project_no"], key))] if row["project_no"] else []
+            result["ai_read"] = self.ai_read(key)
             return result
 
     def set_detail(self, key, data=None, error=""):

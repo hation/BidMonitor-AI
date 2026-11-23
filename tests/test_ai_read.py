@@ -147,3 +147,54 @@ def test_ai_read_fetcher_schedules_direct_after_collection():
     assert store.ai_read(key) is not None
     fetcher.run_once()
     assert store.ai_read(key)['status'] == 'ready'
+
+
+from fastapi.testclient import TestClient
+from apps.workbench.bidmonitor_workbench.api import create_app
+
+
+def make_client():
+    tmp = tempfile.mkdtemp()
+    return TestClient(create_app(str(Path(tmp) / 'test.db')))
+
+
+def test_api_ai_read_settings_save():
+    with make_client() as client:
+        response = client.patch('/api/settings/ai-read', json={
+            'enabled': True, 'deerflow_cli': '/custom/cli', 'gateway': 'http://127.0.0.1:8001',
+            'timeout': 300, 'recursion_limit': 300, 'detail_len': 2000,
+            'auto_enabled': False, 'auto_limit': 5,
+        })
+        assert response.status_code == 200, response.text
+        meta = client.get('/api/meta').json()
+        assert meta['ai_read_settings']['enabled'] is True
+        assert meta['ai_read_settings']['deerflow_cli'] == '/custom/cli'
+
+
+def test_api_ai_read_single_queues():
+    with make_client() as client:
+        project = client.post('/api/projects', json=dict(title='政务云服务器采购项目', url='https://e.com/1',
+                                                         source='测试', published_at='2026-11-20')).json()['project']
+        key = project['id']
+        response = client.post(f'/api/projects/{key}/ai-read')
+        assert response.status_code == 200, response.text
+        assert response.json()['queued'] is True
+
+
+def test_api_ai_read_batch_queues():
+    with make_client() as client:
+        k1 = client.post('/api/projects', json=dict(title='项目一标', url='https://e.com/1', source='测试', published_at='2026-11-20')).json()['project']['id']
+        k2 = client.post('/api/projects', json=dict(title='项目二标', url='https://e.com/2', source='测试', published_at='2026-11-20')).json()['project']['id']
+        response = client.post('/api/ai-read/batch', json={'keys': [k1, k2]})
+        assert response.status_code == 200, response.text
+        assert response.json()['queued'] == 2
+
+
+def test_api_ai_read_detail_returns_record():
+    with make_client() as client:
+        store = client.app.state.store
+        key, _ = store.upsert_project(dict(title='某项目', url='https://e.com/1', source='测试', published_at='2026-11-20'))
+        store.save_ai_read(key, status='ready', result={'预算': '500 万元'}, error='', input_hash='abc')
+        item = client.get(f'/api/projects/{key}').json()
+        assert item['ai_read']['status'] == 'ready'
+        assert item['ai_read']['result']['预算'] == '500 万元'

@@ -128,6 +128,22 @@ class SourceInput(Input):
     enabled: bool
 
 
+class AIReadSettingsInput(Input):
+    enabled: bool = False
+    deerflow_cli: str = Field(default="", max_length=500)
+    gateway: str = Field(default="http://127.0.0.1:8001", max_length=300)
+    timeout: int = Field(default=600, ge=60, le=7200)
+    recursion_limit: int = Field(default=300, ge=50, le=1000)
+    detail_len: int = Field(default=2000, ge=200, le=10000)
+    auto_enabled: bool = False
+    auto_limit: int = Field(default=10, ge=1, le=100)
+
+
+class AIReadBatchInput(Input):
+    keys: list[str] | None = Field(default=None, max_length=50)
+    filter: dict | None = Field(default=None)
+
+
 class OpportunityKeywordsInput(Input):
     core: list[str] = Field(default_factory=list, max_length=200)
     secondary: list[str] = Field(default_factory=list, max_length=200)
@@ -204,6 +220,8 @@ def create_app(db_path=None):
         return store.meta() | {"collection": collector.snapshot(), "schedule": collector.schedule_snapshot(), "source_config": SOURCE,
                                "source_configs": collector.sources(), "source_sectors": SECTORS, "source_industry_sectors": INDUSTRY_SOURCE_SECTORS, "scope": "all_industries",
                                "opportunity_keywords": store.setting('opportunity_keywords') or {},
+                               "ai_read_settings": store.setting('ai_read_settings') or {},
+                               "ai_read_job": store.setting('ai_read_job') or {},
                                "timezone": str(datetime.now().astimezone().tzinfo)}
 
     def get_project(key):
@@ -277,6 +295,31 @@ def create_app(db_path=None):
             collector.detail_fetcher.request(key, item['url'])
             collector.detail_fetcher.stop.wait(2)
         return {"project": get_project(key), "queued": item['detail_status'] != 'ready'}
+
+    @app.post("/api/projects/{key}/ai-read")
+    def ai_read_one(key: str):
+        get_project(key)
+        collector.ai_read_fetcher.request(key)
+        return {"queued": True}
+
+    @app.post("/api/ai-read/batch")
+    def ai_read_batch(body: AIReadBatchInput):
+        keys = body.keys or []
+        if body.filter:
+            relevance = body.filter.get('relevance', '')
+            rows = store.search(relevance=relevance, limit=50)['items']
+            keys = [r['id'] for r in rows]
+        if not keys:
+            raise ValueError('未指定要精读的公告')
+        for key in keys[:50]:
+            collector.ai_read_fetcher.request(key)
+        return {"queued": len(keys[:50])}
+
+    @app.patch("/api/settings/ai-read")
+    def save_ai_read_settings(body: AIReadSettingsInput):
+        settings = body.model_dump()
+        store.set_setting('ai_read_settings', settings)
+        return {"saved": True, "settings": settings}
 
     @app.post("/api/projects/{key}/lead")
     def convert(key: str, body: OwnerInput):
