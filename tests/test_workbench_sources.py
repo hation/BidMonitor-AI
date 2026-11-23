@@ -93,8 +93,9 @@ class SourceTests(unittest.TestCase):
         source = SOURCE | {'url': 'https://test.etrading.cn/'}
         html = '<ul><li><a title="实验室一号楼施工项目" onclick="geturl(\'/jyxx/001001/001001001/20201116/abc-123.html\',\'abc-123\',\'001001001\')">实验室一号楼施工项目</a><span>2020-11-16</span></li><li><a href="/jyxx/001001/001001003/20201116/result.html">实验室设备采购项目</a><span>2020-11-16</span></li></ul>'
         rows = list(parse_listing(html, source['url'], source))
-        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0]['notice_type'], '招标公告')
+        self.assertEqual(rows[1]['notice_type'], '中标候选')
 
     def test_future_or_ambiguous_dates_are_not_used(self):
         html = '<ul><li><a href="/notice/1">实验室设备采购公告</a><span>2099-11-16</span></li><li><a href="/notice/2">实验室设备采购公告</a><span>2020-11-01 2020-11-20</span></li></ul>'
