@@ -68,3 +68,50 @@ def test_classify_combines():
 
 def test_default_keywords_have_three_tiers():
     assert DEFAULT_KEYWORDS['core'] and DEFAULT_KEYWORDS['secondary'] and DEFAULT_KEYWORDS['exclude']
+
+
+import tempfile
+from datetime import date
+from pathlib import Path
+
+from apps.workbench.bidmonitor_workbench.storage.workbench import WorkbenchStore
+
+
+def make_store():
+    tmp = tempfile.mkdtemp()
+    return WorkbenchStore(str(Path(tmp) / "bids.db"))
+
+
+def test_store_seeds_opportunity_keywords():
+    store = make_store()
+    conf = store.setting('opportunity_keywords')
+    assert conf['core'] and conf['secondary'] and conf['exclude']
+
+
+def test_search_attaches_relevance_and_urgency():
+    store = make_store()
+    store.upsert_project(dict(title='政务云服务器采购项目', url='https://e.com/1', source='测试',
+                              published_at='2026-11-20', deadline='2026-11-30'))
+    store.upsert_project(dict(title='市政道路改造工程', url='https://e.com/2', source='测试',
+                              published_at='2026-11-20'))
+    store.upsert_project(dict(title='校园信息化建设', url='https://e.com/3', source='测试',
+                              published_at='2026-11-20', deadline='2026-12-06'))
+    result = store.search()
+    by_title = {r['title']: r for r in result['items']}
+    assert by_title['政务云服务器采购项目']['relevance'] == 'direct'
+    assert by_title['政务云服务器采购项目']['urgency_level'] == 'urgent'
+    assert by_title['政务云服务器采购项目']['days_left'] == 7
+    assert by_title['校园信息化建设']['relevance'] == 'related'
+    assert by_title['市政道路改造工程']['relevance'] == ''
+    assert by_title['市政道路改造工程']['urgency_level'] == 'unknown'
+
+
+def test_search_filters_by_relevance():
+    store = make_store()
+    store.upsert_project(dict(title='政务云服务器采购项目', url='https://e.com/1', source='测试', published_at='2026-11-20'))
+    store.upsert_project(dict(title='校园信息化建设', url='https://e.com/2', source='测试', published_at='2026-11-20'))
+    store.upsert_project(dict(title='市政道路改造工程', url='https://e.com/3', source='测试', published_at='2026-11-20'))
+    assert store.search(relevance='direct')['total'] == 1
+    assert store.search(relevance='related')['total'] == 1
+    assert store.search(relevance='leads')['total'] == 0
+    assert store.search()['total'] == 3

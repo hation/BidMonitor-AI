@@ -11,6 +11,7 @@ from urllib.parse import urldefrag, urlsplit
 from .taxonomy import NOTICE_TYPES, INDUSTRIES, CATEGORIES, classify_notice, suggest_category, suggest_industry
 from .taxonomy import is_result_notice, DISCOVERY_TYPES
 from .availability import availability_state, availability_fields
+from ..collectors.opportunity import classify as opportunity_classify, DEFAULT_KEYWORDS
 
 
 STAGES = ("待评估", "已认领", "已联系", "准备投标", "已投标", "成交", "失标", "放弃")
@@ -106,6 +107,8 @@ class WorkbenchStore:
             for column in ('win_company', 'win_amount'):
                 if column not in columns:
                     db.execute(f"ALTER TABLE projects ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+            if self.setting('opportunity_keywords') is None:
+                self.set_setting('opportunity_keywords', DEFAULT_KEYWORDS)
 
     @contextmanager
     def connection(self):
@@ -170,7 +173,7 @@ class WorkbenchStore:
             self.upsert_project(dict(row) | {"published_at": row["publish_date"]})
 
     def search(self, q="", region="", notice_type="", source="", date_from="", date_to="",
-               scope="all", limit=20, offset=0, tracked=False, industry="", category="", availability="all", refine="", source_ids=None, source_names=()):
+               scope="all", limit=20, offset=0, tracked=False, industry="", category="", availability="all", refine="", source_ids=None, source_names=(), relevance=""):
         if availability not in ("active", "open", "unknown", "closed", "all"):
             raise ValueError("未知截止状态筛选")
         checked_at = datetime.now(timezone.utc)
@@ -236,11 +239,27 @@ class WorkbenchStore:
             total = db.execute("SELECT COUNT(*)" + base + where, args).fetchone()[0]
             rows = db.execute("""
                 SELECT p.id,p.title,p.url,p.source,p.region,p.industry,p.category,p.notice_type,p.published_at,p.deadline,
-                       p.budget,p.purchaser,p.win_company,p.win_amount,p.detail_status,p.created_at,substr(p.content,1,160) AS excerpt,
+                       p.budget,p.purchaser,p.win_company,p.win_amount,p.detail_status,p.created_at,p.content,
+                       substr(p.content,1,160) AS excerpt,
                        l.id AS lead_id,l.owner,l.stage
                 """ + base + where + " ORDER BY p.published_at DESC,p.created_at DESC,p.id LIMIT ? OFFSET ?",
                 (*args, limit, offset)).fetchall()
-        return {"total": total, "items": [dict(r) | availability_fields(dict(r), checked_at) for r in rows],
+        conf = self.setting('opportunity_keywords') or DEFAULT_KEYWORDS
+        today = datetime.now(timezone.utc).date()
+        items = []
+        for row in rows:
+            item = dict(row) | availability_fields(dict(row), checked_at)
+            analysis = opportunity_classify(item['title'], item.get('content', ''),
+                                            item.get('deadline', ''), conf, today)
+            item.pop('content', None)
+            item.update(relevance=analysis['relevance'], urgency_level=analysis['urgency_level'],
+                        days_left=analysis['days_left'])
+            if relevance and analysis['relevance'] != relevance:
+                continue
+            items.append(item)
+        if relevance:
+            total = len(items)
+        return {"total": total, "items": items,
                 "limit": limit, "offset": offset, "availability": availability,
                 "checked_at": checked_at.isoformat(), "deadline_timezone": "Asia/Shanghai"}
 
