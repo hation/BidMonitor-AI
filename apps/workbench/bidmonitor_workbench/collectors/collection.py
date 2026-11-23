@@ -11,6 +11,7 @@ from .sources import catalogue
 from .sectors import matches_industry, source_sectors, source_names
 from .feeds import collect_source, FeedUnavailable
 from .detail import fetch_detail
+from .ai_read import build_prompt, compute_hash, load_ai_config, parse_result, run_deerflow
 from ..storage.workbench import now, ConflictError
 
 
@@ -102,6 +103,111 @@ class DetailFetcher:
             self.thread.join(timeout=2)
 
 
+class AIReadFetcher:
+    """Background AI deep-read: manual queue first, pending/changed scans, 60s pacing."""
+
+    def __init__(self, store, runner=run_deerflow, interval=60):
+        self.store = store
+        self.runner = runner
+        self.interval = max(1, interval)
+        self.stop = threading.Event()
+        self.thread = None
+        self.queue = queue.Queue()
+        self.job = dict(running=False, message='等待精读', completed=0, total=0, failures=0)
+
+    def request(self, key):
+        self.queue.put(key)
+
+    def _snapshot(self):
+        with self.store.connection() as db:
+            db.execute('INSERT INTO workbench_settings(key,value) VALUES (?,?) '
+                       'ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+                       ('ai_read_job', __import__('json').dumps(self.job, ensure_ascii=False)))
+
+    def maybe_schedule(self):
+        """Auto-schedule after collection: queue direct-relevance notices without a current read."""
+        conf = load_ai_config(self.store)
+        if not conf.get('enabled') or not conf.get('auto_enabled'):
+            return
+        limit = int(conf.get('auto_limit', 10))
+        rows = self.store.search(relevance='direct', limit=50)['items']
+        queued = 0
+        for row in rows:
+            if queued >= limit:
+                break
+            project = self.store.project(row['id'])
+            if not project:
+                continue
+            current_hash = compute_hash(project, conf)
+            existing = self.store.ai_read(row['id'])
+            if existing and existing['status'] == 'ready' and existing['input_hash'] == current_hash:
+                continue
+            self.store.save_ai_read(row['id'], 'pending', input_hash=current_hash)
+            self.request(row['id'])
+            queued += 1
+
+    def run_once(self):
+        tasks = []
+        while True:
+            try:
+                tasks.append(self.queue.get_nowait())
+            except queue.Empty:
+                break
+        conf = load_ai_config(self.store)
+        if conf.get('enabled'):
+            with self.store.connection() as db:
+                for project_id, in db.execute(
+                        "SELECT project_id FROM ai_reads WHERE status='pending' "
+                        "ORDER BY created_at ASC LIMIT 50"):
+                    tasks.append(project_id)
+        seen = set()
+        for key in tasks:
+            if self.stop.is_set() or key in seen:
+                continue
+            seen.add(key)
+            project = self.store.project(key)
+            if not project or not project.get('url'):
+                continue
+            current_hash = compute_hash(project, conf)
+            existing = self.store.ai_read(key)
+            if existing and existing['status'] == 'ready' and existing['input_hash'] == current_hash:
+                continue
+            self.store.save_ai_read(key, 'running', input_hash=current_hash)
+            try:
+                prompt = build_prompt(project, conf)
+                outcome = self.runner(prompt, conf)
+                if isinstance(outcome, dict) and outcome.get('error'):
+                    self.store.save_ai_read(key, 'error', result={}, error=outcome['error'], input_hash=current_hash)
+                else:
+                    result = parse_result(outcome)
+                    status = 'ready' if not result.get('error') else 'error'
+                    error = result.get('error', '') if status == 'error' else ''
+                    self.store.save_ai_read(key, status, result=result, error=error, input_hash=current_hash)
+            except Exception as error:
+                self.store.save_ai_read(key, 'error', result={}, error=f'精读异常：{type(error).__name__}', input_hash=current_hash)
+            self.stop.wait(self.interval)
+
+    def _loop(self):
+        while not self.stop.is_set():
+            try:
+                self.run_once()
+            except Exception as error:
+                pass
+            self.stop.wait(self.interval)
+
+    def open(self):
+        if self.thread and self.thread.is_alive():
+            return
+        self.stop.clear()
+        self.thread = threading.Thread(target=self._loop, daemon=True, name='workbench-ai-read')
+        self.thread.start()
+
+    def close(self):
+        self.stop.set()
+        if self.thread:
+            self.thread.join(timeout=2)
+
+
 class CollectionService:
     def __init__(self, store, runner=collect_source, sources=None):
         self.store, self.runner = store, runner
@@ -137,6 +243,7 @@ class CollectionService:
         self.schedule = default | store.setting('collection_schedule', {})
         self.store.set_setting('collection_schedule', self.schedule)
         self.detail_fetcher = DetailFetcher(store)
+        self.ai_read_fetcher = AIReadFetcher(store)
 
     def _record_host_block(self, source):
         host = source_host(source)
@@ -415,6 +522,10 @@ class CollectionService:
                 self.job['finished_at'] = now()
                 self.store.set_setting('collection_last_job', self.job)
                 self.store.set_setting('collection_schedule', self.schedule)
+            try:
+                self.ai_read_fetcher.maybe_schedule()
+            except Exception:
+                pass
 
     def tick(self):
         with self.lock:
@@ -441,6 +552,7 @@ class CollectionService:
         self.scheduler = threading.Thread(target=loop, daemon=True, name='workbench-scheduler')
         self.scheduler.start()
         self.detail_fetcher.open()
+        self.ai_read_fetcher.open()
 
     def close(self):
         self.closed.set()
@@ -449,3 +561,4 @@ class CollectionService:
         if self.scheduler:
             self.scheduler.join(timeout=2)
         self.detail_fetcher.close()
+        self.ai_read_fetcher.close()

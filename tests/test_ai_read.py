@@ -95,3 +95,55 @@ def test_ai_read_marks_error():
     row = store.ai_read(key)
     assert row['status'] == 'error'
     assert row['error']
+
+
+from apps.workbench.bidmonitor_workbench.collectors.collection import AIReadFetcher
+from apps.workbench.bidmonitor_workbench.collectors.ai_read import DEFAULT_AI_SETTINGS
+
+
+def test_ai_read_fetcher_processes_pending():
+    store = make_store()
+    key, _ = store.upsert_project(dict(title='政务云服务器采购项目', url='https://e.com/1', source='测试',
+                                       published_at='2026-11-20', budget='500 万元'))
+    fetcher = AIReadFetcher(store, runner=lambda task, conf: '{"预算": "500 万元"}')
+    fetcher.request(key)
+    fetcher.run_once()
+    row = store.ai_read(key)
+    assert row['status'] == 'ready'
+    assert row['result']['预算'] == '500 万元'
+
+
+def test_ai_read_fetcher_skips_ready_with_same_hash():
+    store = make_store()
+    key, _ = store.upsert_project(dict(title='政务云服务器采购项目', url='https://e.com/1', source='测试',
+                                       published_at='2026-11-20', budget='500 万元'))
+    calls = []
+    fetcher = AIReadFetcher(store, runner=lambda task, conf: (calls.append(1) or '{"预算": "500 万元"}'))
+    fetcher.request(key)
+    fetcher.run_once()
+    fetcher.run_once()
+    assert len(calls) == 1
+
+
+def test_ai_read_fetcher_marks_error():
+    store = make_store()
+    key, _ = store.upsert_project(dict(title='某项目', url='https://e.com/2', source='测试', published_at='2026-11-20'))
+    fetcher = AIReadFetcher(store, runner=lambda task, conf: {'error': '未配置 deerflow CLI 路径'})
+    fetcher.request(key)
+    fetcher.run_once()
+    row = store.ai_read(key)
+    assert row['status'] == 'error'
+    assert 'deerflow' in row['error']
+
+
+def test_ai_read_fetcher_schedules_direct_after_collection():
+    store = make_store()
+    store.set_setting('ai_read_settings', DEFAULT_AI_SETTINGS | {'enabled': True, 'auto_enabled': True, 'auto_limit': 10})
+    key, _ = store.upsert_project(dict(title='政务云服务器采购项目', url='https://e.com/1', source='测试',
+                                       published_at='2026-11-20', budget='500 万元'))
+    store.upsert_project(dict(title='市政道路改造工程', url='https://e.com/2', source='测试', published_at='2026-11-20'))
+    fetcher = AIReadFetcher(store, runner=lambda task, conf: '{"预算": "500 万元"}')
+    fetcher.maybe_schedule()
+    assert store.ai_read(key) is not None
+    fetcher.run_once()
+    assert store.ai_read(key)['status'] == 'ready'
