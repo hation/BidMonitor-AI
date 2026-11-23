@@ -273,7 +273,7 @@ class WorkbenchStore:
                 data = dict(data or {})
                 data["attachments"] = json.dumps(data.get("attachments", []), ensure_ascii=False)
                 allowed = {"title", "content", "attachments", "published_at", "deadline", "budget", "purchaser",
-                           "agency", "project_no", "region", "category"}
+                           "agency", "project_no", "region", "category", "win_company", "win_amount"}
                 updates = {k: v for k, v in data.items() if k in allowed and v}
                 updates.update(detail_status="ready", detail_error="", detail_fetched_at=now(), updated_at=now())
                 db.execute("UPDATE projects SET " + ",".join(k + "=?" for k in updates) +

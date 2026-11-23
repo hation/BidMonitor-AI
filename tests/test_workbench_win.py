@@ -84,3 +84,57 @@ def test_extract_fields_no_win_when_absent():
     result = extract_fields(content)
     assert not result.get('win_company')
     assert not result.get('win_amount')
+
+
+import queue
+import time
+from unittest.mock import patch
+from apps.workbench.bidmonitor_workbench.collectors.collection import DetailFetcher
+
+
+def test_detail_fetcher_backfills_and_marks_error():
+    store = make_store()
+    key, _ = store.upsert_project(dict(title='某设备采购项目招标公告', url='https://example.com/b', source='测试', published_at='2026-11-20'))
+    calls = []
+
+    def fake_fetch(url):
+        calls.append(url)
+        if url.endswith('/bad'):
+            raise ValueError('未获取到可用公告正文')
+        return {'content': '招标正文', 'deadline': '2026-12-01', 'budget': '50 万元', 'win_company': '', 'win_amount': ''}
+
+    fetcher = DetailFetcher(store, fetch=fake_fetch, rate_per_min=120)
+    fetcher.run_once()
+    with store.connection() as db:
+        good = db.execute("SELECT detail_status,content,deadline FROM projects WHERE id=?", (key,)).fetchone()
+    assert good['detail_status'] == 'ready'
+    assert good['content'] == '招标正文'
+    assert good['deadline'] == '2026-12-01'
+
+    key2, _ = store.upsert_project(dict(title='某设备采购项目招标公告2', url='https://example.com/bad', source='测试', published_at='2026-11-20'))
+    fetcher.run_once()
+    with store.connection() as db:
+        bad = db.execute("SELECT detail_status,detail_error FROM projects WHERE id=?", (key2,)).fetchone()
+    assert bad['detail_status'] == 'error'
+    assert '可用公告正文' in (bad['detail_error'] or '')
+
+
+def test_detail_fetcher_prioritizes_manual_queue():
+    store = make_store()
+    key, _ = store.upsert_project(dict(title='某项目', url='https://example.com/1', source='测试', published_at='2026-11-20'))
+    fetcher = DetailFetcher(store, fetch=lambda url: {'content': '正文'}, rate_per_min=120)
+    fetcher.request(key, 'https://example.com/1')
+    fetcher.run_once()
+    with store.connection() as db:
+        row = db.execute("SELECT detail_status,content FROM projects WHERE id=?", (key,)).fetchone()
+    assert row['detail_status'] == 'ready'
+    assert row['content'] == '正文'
+
+
+def test_detail_fetcher_host_cooldown_skips():
+    store = make_store()
+    store.upsert_project(dict(title='某项目', url='https://blocked.example/1', source='测试', published_at='2026-11-20'))
+    fetcher = DetailFetcher(store, fetch=lambda url: (_ for _ in ()).throw(ValueError('来源限制访问（HTTP 429）')), rate_per_min=120)
+    fetcher.run_once()
+    fetcher.run_once()
+    assert 'blocked.example' in fetcher.host_cooldowns

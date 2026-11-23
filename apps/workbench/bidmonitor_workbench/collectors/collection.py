@@ -1,5 +1,8 @@
 """Persistent source health and a single non-overlapping local collection scheduler."""
+import queue
+import re
 import threading
+import time
 from urllib.parse import urlsplit
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
@@ -7,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from .sources import catalogue
 from .sectors import matches_industry, source_sectors, source_names
 from .feeds import collect_source, FeedUnavailable
+from .detail import fetch_detail
 from ..storage.workbench import now, ConflictError
 
 
@@ -20,6 +24,82 @@ def source_host(source):
 
 def future(minutes):
     return (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat(timespec='seconds')
+
+
+class DetailFetcher:
+    """Background detail backfill: bounded scans, token-bucket pacing, host cooldowns."""
+
+    def __init__(self, store, fetch=fetch_detail, rate_per_min=20):
+        self.store = store
+        self.fetch = fetch
+        self.rate_per_min = rate_per_min
+        self.interval = max(1.0, 60.0 / rate_per_min)
+        self.stop = threading.Event()
+        self.thread = None
+        self.queue = queue.Queue()
+        self.host_cooldowns = {}
+
+    def request(self, key, url):
+        self.queue.put((key, url))
+
+    def _blocked(self, error):
+        text = str(error)
+        return bool(re.search(r'HTTP (?:401|403|429)|安全验证|验证码|限制访问|限流提示页|访问受限|blocked', text, re.I))
+
+    def run_once(self):
+        # Manual queue first, then pending backlog.
+        tasks = []
+        while True:
+            try:
+                tasks.append(self.queue.get_nowait())
+            except queue.Empty:
+                break
+        with self.store.connection() as db:
+            for key, url in db.execute(
+                    "SELECT id,url FROM projects WHERE detail_status='pending' AND url<>'' "
+                    "ORDER BY created_at ASC LIMIT 50"):
+                tasks.append((key, url))
+        for key, url in tasks:
+            if self.stop.is_set():
+                break
+            host = urlsplit(url).hostname or ''
+            if host in self.host_cooldowns and self.host_cooldowns[host] > time.time():
+                continue
+            try:
+                data = self.fetch(url)
+                if data:
+                    self.store.set_detail(key, data)
+            except Exception as error:
+                self.store.set_detail(key, error=str(error)[:500])
+                if self._blocked(error) and host:
+                    self.host_cooldowns[host] = time.time() + 60
+            self.stop.wait(self.interval)
+
+    def _loop(self):
+        while not self.stop.is_set():
+            try:
+                self.run_once()
+            except Exception as error:
+                self.store.record_run('详情补抓', 'error', 0, f'补抓线程异常：{type(error).__name__}')
+            self.stop.wait(30 if not self._has_work() else 3)
+
+    def _has_work(self):
+        if not self.queue.empty():
+            return True
+        with self.store.connection() as db:
+            return db.execute("SELECT 1 FROM projects WHERE detail_status='pending' AND url<>'' LIMIT 1").fetchone() is not None
+
+    def open(self):
+        if self.thread and self.thread.is_alive():
+            return
+        self.stop.clear()
+        self.thread = threading.Thread(target=self._loop, daemon=True, name='workbench-detail-fetcher')
+        self.thread.start()
+
+    def close(self):
+        self.stop.set()
+        if self.thread:
+            self.thread.join(timeout=2)
 
 
 class CollectionService:
@@ -56,6 +136,7 @@ class CollectionService:
         default = dict(enabled=True, interval_minutes=60, pages_per_source=3, next_run=future(60), last_run=None)
         self.schedule = default | store.setting('collection_schedule', {})
         self.store.set_setting('collection_schedule', self.schedule)
+        self.detail_fetcher = DetailFetcher(store)
 
     def _record_host_block(self, source):
         host = source_host(source)
@@ -359,6 +440,7 @@ class CollectionService:
                 self.wake.clear()
         self.scheduler = threading.Thread(target=loop, daemon=True, name='workbench-scheduler')
         self.scheduler.start()
+        self.detail_fetcher.open()
 
     def close(self):
         self.closed.set()
@@ -366,3 +448,4 @@ class CollectionService:
         self.wake.set()
         if self.scheduler:
             self.scheduler.join(timeout=2)
+        self.detail_fetcher.close()
