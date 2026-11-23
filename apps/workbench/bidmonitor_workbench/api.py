@@ -128,6 +128,22 @@ class SourceInput(Input):
     enabled: bool
 
 
+class OpportunityKeywordsInput(Input):
+    core: list[str] = Field(default_factory=list, max_length=200)
+    secondary: list[str] = Field(default_factory=list, max_length=200)
+    exclude: list[str] = Field(default_factory=list, max_length=200)
+
+    @field_validator("core", "secondary", "exclude")
+    @classmethod
+    def clean_words(cls, words):
+        cleaned = []
+        for word in words:
+            word = word.strip()
+            if word and len(word) <= 30 and word not in cleaned:
+                cleaned.append(word)
+        return cleaned
+
+
 def create_app(db_path=None):
     @asynccontextmanager
     async def lifespan(app):
@@ -309,6 +325,13 @@ def create_app(db_path=None):
     @app.put("/api/schedule")
     def configure_schedule(body: ScheduleInput):
         return collector.configure(**body.model_dump())
+
+    @app.patch("/api/settings/opportunity-keywords")
+    async def save_opportunity_keywords(request: Request):
+        body = OpportunityKeywordsInput.model_validate(await request.json())
+        keywords = {'core': body.core, 'secondary': body.secondary, 'exclude': body.exclude}
+        store.set_setting('opportunity_keywords', keywords)
+        return {'saved': True, 'keywords': keywords}
 
     @app.post("/api/collect")
     def start_collection(pending_only: bool = False, industry: str = "", sector: str = "", source: str = "", body: CollectionScopeInput | None = None):
