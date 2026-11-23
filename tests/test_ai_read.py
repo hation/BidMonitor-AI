@@ -105,7 +105,7 @@ def test_ai_read_fetcher_processes_pending():
     store = make_store()
     key, _ = store.upsert_project(dict(title='政务云服务器采购项目', url='https://e.com/1', source='测试',
                                        published_at='2026-11-20', budget='500 万元'))
-    fetcher = AIReadFetcher(store, runner=lambda task, conf: '{"预算": "500 万元"}')
+    fetcher = AIReadFetcher(store, runner=lambda task, conf: '{"预算": "500 万元"}', interval=0)
     fetcher.request(key)
     fetcher.run_once()
     row = store.ai_read(key)
@@ -118,7 +118,7 @@ def test_ai_read_fetcher_skips_ready_with_same_hash():
     key, _ = store.upsert_project(dict(title='政务云服务器采购项目', url='https://e.com/1', source='测试',
                                        published_at='2026-11-20', budget='500 万元'))
     calls = []
-    fetcher = AIReadFetcher(store, runner=lambda task, conf: (calls.append(1) or '{"预算": "500 万元"}'))
+    fetcher = AIReadFetcher(store, runner=lambda task, conf: (calls.append(1) or '{"预算": "500 万元"}'), interval=0)
     fetcher.request(key)
     fetcher.run_once()
     fetcher.run_once()
@@ -128,7 +128,7 @@ def test_ai_read_fetcher_skips_ready_with_same_hash():
 def test_ai_read_fetcher_marks_error():
     store = make_store()
     key, _ = store.upsert_project(dict(title='某项目', url='https://e.com/2', source='测试', published_at='2026-11-20'))
-    fetcher = AIReadFetcher(store, runner=lambda task, conf: {'error': '未配置 deerflow CLI 路径'})
+    fetcher = AIReadFetcher(store, runner=lambda task, conf: {'error': '未配置 deerflow CLI 路径'}, interval=0)
     fetcher.request(key)
     fetcher.run_once()
     row = store.ai_read(key)
@@ -142,7 +142,7 @@ def test_ai_read_fetcher_schedules_direct_after_collection():
     key, _ = store.upsert_project(dict(title='政务云服务器采购项目', url='https://e.com/1', source='测试',
                                        published_at='2026-11-20', budget='500 万元'))
     store.upsert_project(dict(title='市政道路改造工程', url='https://e.com/2', source='测试', published_at='2026-11-20'))
-    fetcher = AIReadFetcher(store, runner=lambda task, conf: '{"预算": "500 万元"}')
+    fetcher = AIReadFetcher(store, runner=lambda task, conf: '{"预算": "500 万元"}', interval=0)
     fetcher.maybe_schedule()
     assert store.ai_read(key) is not None
     fetcher.run_once()
