@@ -69,3 +69,29 @@ def test_default_settings_shape():
     assert DEFAULT_AI_SETTINGS['enabled'] is False
     assert DEFAULT_AI_SETTINGS['gateway'] == 'http://127.0.0.1:8001'
     assert 0 < DEFAULT_AI_SETTINGS['auto_limit'] <= 100
+
+
+def test_store_seeds_ai_settings():
+    store = make_store()
+    conf = store.setting('ai_read_settings')
+    assert conf['enabled'] is False
+    assert conf['gateway'] == 'http://127.0.0.1:8001'
+
+
+def test_ai_read_upsert_and_fetch():
+    store = make_store()
+    key, _ = store.upsert_project(dict(title='某项目', url='https://e.com/1', source='测试', published_at='2026-11-20'))
+    store.save_ai_read(key, status='ready', result={'预算': '500 万元'}, error='', input_hash='abc')
+    row = store.ai_read(key)
+    assert row['status'] == 'ready'
+    assert row['result']['预算'] == '500 万元'
+    assert row['input_hash'] == 'abc'
+
+
+def test_ai_read_marks_error():
+    store = make_store()
+    key, _ = store.upsert_project(dict(title='某项目', url='https://e.com/2', source='测试', published_at='2026-11-20'))
+    store.save_ai_read(key, status='error', result={}, error='未配置 deerflow CLI 路径', input_hash='')
+    row = store.ai_read(key)
+    assert row['status'] == 'error'
+    assert row['error']

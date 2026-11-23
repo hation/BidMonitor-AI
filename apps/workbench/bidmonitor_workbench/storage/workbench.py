@@ -93,6 +93,15 @@ class WorkbenchStore:
                     PRIMARY KEY(source_id, project_id)
                 );
                 CREATE INDEX IF NOT EXISTS idx_project_sources_project ON project_sources(project_id);
+                CREATE TABLE IF NOT EXISTS ai_reads (
+                    project_id TEXT PRIMARY KEY REFERENCES projects(id),
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    input_hash TEXT NOT NULL DEFAULT '',
+                    result_json TEXT NOT NULL DEFAULT '',
+                    error TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
             """)
             source_columns = {r[1] for r in db.execute('PRAGMA table_info(workbench_sources)')}
             if 'search_name' not in source_columns:
@@ -109,6 +118,9 @@ class WorkbenchStore:
                     db.execute(f"ALTER TABLE projects ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
             if self.setting('opportunity_keywords') is None:
                 self.set_setting('opportunity_keywords', DEFAULT_KEYWORDS)
+            if self.setting('ai_read_settings') is None:
+                from ..collectors.ai_read import DEFAULT_AI_SETTINGS
+                self.set_setting('ai_read_settings', DEFAULT_AI_SETTINGS)
 
     @contextmanager
     def connection(self):
@@ -297,6 +309,26 @@ class WorkbenchStore:
                 updates.update(detail_status="ready", detail_error="", detail_fetched_at=now(), updated_at=now())
                 db.execute("UPDATE projects SET " + ",".join(k + "=?" for k in updates) +
                            " WHERE id=?", (*updates.values(), key))
+
+    def save_ai_read(self, project_id, status, result=None, error='', input_hash=''):
+        result_json = json.dumps(result or {}, ensure_ascii=False)
+        timestamp = now()
+        with self.connection() as db:
+            db.execute('''INSERT INTO ai_reads(project_id,status,input_hash,result_json,error,created_at,updated_at)
+                          VALUES (?,?,?,?,?,?,?)
+                          ON CONFLICT(project_id) DO UPDATE SET
+                          status=excluded.status, input_hash=excluded.input_hash,
+                          result_json=excluded.result_json, error=excluded.error, updated_at=excluded.updated_at''',
+                       (project_id, status, input_hash, result_json, error, timestamp, timestamp))
+
+    def ai_read(self, project_id):
+        with self.connection() as db:
+            row = db.execute('SELECT * FROM ai_reads WHERE project_id=?', (project_id,)).fetchone()
+            if not row:
+                return None
+            result = dict(row)
+            result['result'] = json.loads(result['result_json']) if result['result_json'] else {}
+            return result
 
     def create_lead(self, project_id, owner=""):
         key, timestamp = uuid.uuid4().hex, now()
