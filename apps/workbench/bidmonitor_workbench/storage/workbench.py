@@ -51,6 +51,7 @@ class WorkbenchStore:
                     project_no TEXT NOT NULL DEFAULT '', content TEXT NOT NULL DEFAULT '',
                     attachments TEXT NOT NULL DEFAULT '[]', detail_status TEXT NOT NULL DEFAULT 'pending',
                     detail_error TEXT NOT NULL DEFAULT '', detail_fetched_at TEXT,
+                    win_company TEXT NOT NULL DEFAULT '', win_amount TEXT NOT NULL DEFAULT '',
                     created_at TEXT NOT NULL, updated_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS projects_date ON projects(published_at DESC, created_at DESC);
@@ -102,6 +103,9 @@ class WorkbenchStore:
                     classify_field = suggest_industry if column == 'industry' else suggest_category
                     for row in db.execute('SELECT id,title FROM projects').fetchall():
                         db.execute(f'UPDATE projects SET {column}=? WHERE id=?', (classify_field(row['title']),row['id']))
+            for column in ('win_company', 'win_amount'):
+                if column not in columns:
+                    db.execute(f"ALTER TABLE projects ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
 
     @contextmanager
     def connection(self):
@@ -368,7 +372,7 @@ class WorkbenchStore:
                 "sources": [r[0] for r in db.execute('''SELECT source FROM projects WHERE source<>''
                     UNION SELECT s.search_name FROM workbench_sources s JOIN project_sources ps ON ps.source_id=s.id
                     WHERE s.search_name<>'' ORDER BY 1''')],
-                "notice_types": DISCOVERY_TYPES, "stage_options": STAGES,
+                "notice_types": NOTICE_TYPES, "stage_options": STAGES,
                 "industries": sorted(set(INDUSTRIES) | {r[0] for r in db.execute('SELECT DISTINCT industry FROM projects')}),
                 "categories": CATEGORIES,
                 "runs": [dict(r) for r in db.execute("SELECT * FROM collection_runs ORDER BY id DESC LIMIT 50")],
