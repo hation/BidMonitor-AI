@@ -51,6 +51,14 @@
           </form><div id="scheduleStatus" class="notice"></div>
           <div class="collection-status" id="collectionStatus"></div><progress id="collectionProgress" max="1" value="0" aria-label="采集进度"></progress>
           <div class="toolbar-actions"><button class="button primary" id="provincialCollect">采集省站直连</button><button class="button" id="settingsCollect">开始采集</button><button class="button" id="stopCollect">停止采集</button></div></article>
+        <article class="panel"><div class="panel-title"><h2>机会分析关键词</h2><span class="tag green">保存即生效</span></div>
+          <p>按业务方向设置相关度判定词表：<b>核心词</b>命中标题 → 直接相关；<b>次要词</b> → 相关；<b>排除词</b>命中标题直接剔除。标题未命中但正文出现 ≥3 个核心词 → 意向线索。</p>
+          <div class="form-grid">
+            <label>核心词（每行一个）<textarea id="kwCore" rows="6" placeholder="服务器&#10;算力&#10;GPU"></textarea></label>
+            <label>次要词（每行一个）<textarea id="kwSecondary" rows="6" placeholder="信息化&#10;系统集成"></textarea></label>
+          </div>
+          <label>排除词（每行一个）<textarea id="kwExclude" rows="4" placeholder="复印纸&#10;物业&#10;食堂"></textarea></label>
+          <div class="form-footer"><span class="muted" id="kwStatus"></span><button class="button primary" id="saveKeywords">保存关键词</button></div></article>
         <article class="panel"><h2>团队成员</h2><p>成员用于分配线索负责人。本机版暂不提供独立账号和访问权限；服务仅监听本机地址。</p><form id="memberForm" class="inline-form"><input name="name" placeholder="输入成员姓名" required maxlength="50" aria-label="新成员姓名"><button class="button primary">添加</button></form><div class="member-list" id="memberList"></div><div class="notice" id="timezoneInfo"></div></article></div>
         <article class="panel"><h2>扩充来源库</h2><p>可批量导入地市县交易平台、行业企业、招标代理、高校和医院等网站。每次最多 10000 条，重复列表地址自动跳过，保存后持续参与采集。仅导入目录不代表采集成功。</p>
           <form id="sourceImportForm"><label>来源 CSV 文件（UTF-8，可选）<input id="sourceImportFile" type="file" accept=".csv,text/csv"></label>

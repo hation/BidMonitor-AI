@@ -158,7 +158,14 @@ async function refreshMeta() {
   renderSchedule();
   updateSourceOptions();
   renderStages();
+  loadOpportunityKeywords();
   return meta;
+}
+function loadOpportunityKeywords() {
+  const kw = state.meta?.opportunity_keywords || {core:[],secondary:[],exclude:[]};
+  $('#kwCore').value = (kw.core || []).join('\n');
+  $('#kwSecondary').value = (kw.secondary || []).join('\n');
+  $('#kwExclude').value = (kw.exclude || []).join('\n');
 }
 function searchParams(paging = true) {
   const params = new URLSearchParams();
@@ -316,6 +323,19 @@ $('#refreshLeads').addEventListener('click', e => busy(e.currentTarget, refreshL
 for (const id of ['leadOwner','leadStage','dueOnly']) $('#'+id).addEventListener('change',loadLeads);
 let leadTimer; $('#leadQuery').addEventListener('input', () => { clearTimeout(leadTimer); leadTimer = setTimeout(loadLeads,250); });
 $('#memberForm').addEventListener('submit', e => { e.preventDefault(); const form = e.currentTarget; busy($('button',form),async () => { await api('/api/members','POST',Object.fromEntries(new FormData(form))); form.reset(); await refreshMeta(); toast('成员已添加'); }); });
+$('#saveKeywords').addEventListener('click', async function () {
+  await busy(this, async () => {
+    const body = {
+      core: $('#kwCore').value.split('\n'),
+      secondary: $('#kwSecondary').value.split('\n'),
+      exclude: $('#kwExclude').value.split('\n'),
+    };
+    await api('/api/settings/opportunity-keywords', 'PATCH', body);
+    await refreshMeta();
+    $('#kwStatus').textContent = '已保存，相关度计算即时生效';
+    toast('关键词已保存');
+  });
+});
 $('#addProjectButton').addEventListener('click', () => { const form = $('#projectForm'); form.reset(); delete form.dataset.editing; form.elements.url.disabled = false; $('.dialog-heading h2').textContent = '录入项目'; $('#projectDialog').showModal(); });
 $('#closeProject').addEventListener('click', () => $('#projectDialog').close());
 $('#projectForm').addEventListener('submit', e => { e.preventDefault(); const form = e.currentTarget; busy($('button[type=submit]',form), async () => { const editing = form.dataset.editing; const values = Object.fromEntries(new FormData(form)); if (editing) values.agency = state.project.agency; const data = await api('/api/projects'+(editing ? '/'+editing : ''),editing ? 'PATCH' : 'POST',values); $('#projectDialog').close(); form.reset(); await refreshLists(); toast(data.created ? '项目已录入' : '项目信息已更新'); navigateProject(data.project.id); }); });
