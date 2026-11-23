@@ -126,7 +126,7 @@ class WorkbenchStore:
             url = urldefrag(url)[0]
         key = hashlib.sha256(url.encode()).hexdigest() if url else uuid.uuid4().hex
         fields = ("title", "source", "region", "published_at", "deadline", "budget",
-                  "purchaser", "agency", "project_no", "content")
+                  "purchaser", "agency", "project_no", "content", "win_company", "win_amount")
         values = {k: str(data.get(k) or "").strip() for k in fields}
         values.update(id=key, url=url, notice_type=data.get("notice_type") or classify(values["title"]),
                       detail_status="ready" if values["content"] else "pending",
@@ -236,7 +236,7 @@ class WorkbenchStore:
             total = db.execute("SELECT COUNT(*)" + base + where, args).fetchone()[0]
             rows = db.execute("""
                 SELECT p.id,p.title,p.url,p.source,p.region,p.industry,p.category,p.notice_type,p.published_at,p.deadline,
-                       p.budget,p.purchaser,p.detail_status,p.created_at,substr(p.content,1,160) AS excerpt,
+                       p.budget,p.purchaser,p.win_company,p.win_amount,p.detail_status,p.created_at,substr(p.content,1,160) AS excerpt,
                        l.id AS lead_id,l.owner,l.stage
                 """ + base + where + " ORDER BY p.published_at DESC,p.created_at DESC,p.id LIMIT ? OFFSET ?",
                 (*args, limit, offset)).fetchall()

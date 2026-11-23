@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -251,8 +251,11 @@ def create_app(db_path=None):
 
     @app.post("/api/projects/{key}/detail")
     def refresh_detail(key: str):
-        get_project(key)
-        raise HTTPException(410, "工作台仅收录标题、原始链接和发布时间，请打开原始链接查看公告")
+        item = get_project(key)
+        if item['detail_status'] != 'ready' and item['url']:
+            collector.detail_fetcher.request(key, item['url'])
+            collector.detail_fetcher.stop.wait(2)
+        return {"project": get_project(key), "queued": item['detail_status'] != 'ready'}
 
     @app.post("/api/projects/{key}/lead")
     def convert(key: str, body: OwnerInput):

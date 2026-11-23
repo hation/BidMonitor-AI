@@ -138,3 +138,12 @@ def test_detail_fetcher_host_cooldown_skips():
     fetcher.run_once()
     fetcher.run_once()
     assert 'blocked.example' in fetcher.host_cooldowns
+
+
+def test_search_returns_win_fields():
+    store = make_store()
+    store.upsert_project(dict(title='某设备采购项目中标结果公告', url='https://example.com/a',
+                              source='测试', published_at='2026-11-20', win_company='北京某某科技有限公司', win_amount='286 万元'))
+    result = store.search()
+    assert result['items'][0]['win_company'] == '北京某某科技有限公司'
+    assert result['items'][0]['win_amount'] == '286 万元'
